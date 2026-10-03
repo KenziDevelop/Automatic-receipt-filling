@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KuitansiGen - Generator Kuitansi Resmi</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- QRCode.js Library CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+
+/* Sembunyikan elemen canvas di dalam wadah QR */
+div[id^="qrcode-"] canvas {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    visibility: hidden !important;
+}
+
+/* Pastikan cuma gambar (img) yang kelihatan */
+div[id^="qrcode-"] img {
+    display: inline-block !important;
+}
+        /* Styles khusus Cetak / PDF Generator */
+        @media print {
+            .no-print { 
+                display: none !important; 
+            }
+            body { 
+                background: white !important; 
+                padding: 0 !important; 
+                margin: 0 !important; 
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+            #kuitansiContainer { 
+                display: block !important; 
+                padding: 0 !important;
+                margin: 0 !important;
+            }
+            .kuitansi-page { 
+                page-break-inside: avoid;
+                margin: 0 auto 12px auto !important;
+                box-shadow: none !important;
+                display: block !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+        }
+        
+        /* Layout Kuitansi Ukuran Fisik Standar Presisi (20.5cm x 9.5cm) */
+        .kuitansi-box {
+            width: 205mm;
+            min-height: 95mm;
+            padding: 16px 24px;
+            margin: 20px auto;
+            position: relative;
+            font-family: 'Times New Roman', Times, serif;
+            color: #0d233a;
+            border: 1.5px solid #005681;
+            box-sizing: border-box;
+            
+            /* Latar Belakang Guilloche Cyan Scale Standard */
+            background-color: #eaf6fc;
+            background-image: 
+                radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.8) 0%, rgba(255, 255, 255, 0.2) 65%, transparent 100%),
+                radial-gradient(circle at 85% 20%, rgba(0, 168, 232, 0.15) 0%, transparent 45%),
+                radial-gradient(circle at 15% 80%, rgba(0, 168, 232, 0.15) 0%, transparent 45%),
+                url("data:image/svg+xml,%3Csvg width='70' height='70' viewBox='0 0 70 70' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' stroke='%23008ac2' stroke-width='0.35' stroke-opacity='0.3'%3E%3Cpath d='M0 0h70v70H0z'/%3E%3Ccircle cx='35' cy='35' r='33'/%3E%3Ccircle cx='35' cy='35' r='25'/%3E%3Ccircle cx='35' cy='35' r='17'/%3E%3Cpath d='M0 35h70M35 0v70'/%3E%3C/g%3E%3C/svg%3E");
+            background-repeat: repeat;
+        }
+
+        /* Garis Titik-Titik Isian */
+        .border-dotted-line {
+            border-bottom: 1px dotted #0d233a;
+        }
+
+        /* Kotak Nominal Miring (Skew) */
+        .skew-box {
+            transform: skewX(-15deg);
+            border: 1.5px solid #005681;
+            padding: 3px 16px;
+            display: inline-block;
+            background-color: rgba(255, 255, 255, 0.9);
+            box-shadow: 1px 1px 0px rgba(0, 86, 129, 0.2);
+        }
+        .skew-box-content {
+            transform: skewX(15deg);
+            font-weight: bold;
+            font-size: 0.95rem;
+            color: #000;
+        }
+
+        /* Style QR Code Canvas */
+        .qrcode-container img, .qrcode-container canvas {
+            display: inline-block !important;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 min-h-screen font-sans text-slate-800 pb-12">
+
+    <!-- Top Navigation Header Web -->
+    <header class="bg-slate-900 text-white py-4 px-6 shadow-md no-print mb-8">
+        <div class="max-w-6xl mx-auto flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <div class="bg-blue-600 p-2 rounded-lg text-white">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg leading-tight">KuitansiGen</h1>
+                    <p class="text-xs text-slate-400">Generator & Batch Printer Kuitansi Resmi</p>
+                </div>
+            </div>
+            <span class="bg-blue-500/20 text-blue-300 text-xs font-semibold px-3 py-1 rounded-full border border-blue-500/30">
+                v3.0 Algo-Pack
+            </span>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="max-w-5xl mx-auto px-4">
+        
+        <!-- Panel Card Form Pengaturan -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-6 mb-6 no-print transition-all">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-4 mb-5">
+                <div class="flex items-center gap-2">
+                    <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                    <h2 class="text-base font-bold text-slate-800">Pengaturan Parameter Kuitansi</h2>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span id="duplicateAlertBadge" class="hidden text-xs bg-rose-100 text-rose-700 font-bold px-2.5 py-1 rounded-md border border-rose-200 animate-pulse">
+                        ⚠️ 0 Duplikat Terdeteksi
+                    </span>
+                    <span id="dataCountBadge" class="text-xs bg-blue-50 text-blue-700 font-semibold px-3 py-1 rounded-full border border-blue-200">
+                        0 Kuitansi Loaded
+                    </span>
+                </div>
+            </div>
+
+            <!-- Inputs Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1.5">Nama Perusahaan / Sekolah</label>
+                    <input type="text" id="instansiName" value="SD Negeri 17 Kuningan" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all" oninput="applyFilter()">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1.5">Kepala Sekolah / Pimpinan</label>
+                    <input type="text" id="kepsekName" value="SAMSUDIN, S.Pd.,M.Pd." class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all" oninput="applyFilter()">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1.5">NIP Kepala Sekolah</label>
+                    <input type="text" id="kepsekNip" value="19680226 200604 1 004" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all" oninput="applyFilter()">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1.5">Kota & Tanggal Cetak</label>
+                    <input type="text" id="kotaTanggal" value="Kuningan, 29 Mei 2026" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all" oninput="applyFilter()">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1.5">Nama Bendahara</label>
+                    <input type="text" id="bendaharaName" value="LENA HERMILA SARI, S.Pd." class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all" oninput="applyFilter()">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1.5">NIP Bendahara</label>
+                    <input type="text" id="bendaharaNip" value="19820116 201409 2 001" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all" oninput="applyFilter()">
+                </div>
+            </div>
+
+            <!-- Custom Drag & Drop Excel Upload Form -->
+            <form id="uploadForm" class="border-t border-slate-100 pt-5">
+                <div class="flex flex-col md:flex-row gap-4 items-center justify-between">
+                    
+                    <div class="w-full md:w-auto flex-1">
+                        <label for="excelFile" class="flex items-center gap-3 w-full p-2.5 border-2 border-dashed border-slate-300 rounded-xl hover:border-blue-500 cursor-pointer bg-slate-50/50 transition-all">
+                            <div class="p-2 bg-emerald-100 text-emerald-700 rounded-lg">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                            </div>
+                            <div class="overflow-hidden">
+                                <p id="fileNameDisplay" class="text-xs font-semibold text-slate-700 truncate">Pilih / Unggah File Excel (.xlsx)</p>
+                                <p class="text-[10px] text-slate-400">Klik untuk mencari file data kuitansi</p>
+                            </div>
+                            <input type="file" id="excelFile" accept=".xlsx, .xls" required class="hidden" onchange="updateFileName(this)">
+                        </label>
+                    </div>
+
+                    <div class="flex gap-3 w-full md:w-auto">
+                        <button type="submit" class="flex-1 md:flex-initial flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-medium px-5 py-2.5 rounded-xl text-sm shadow-sm hover:shadow transition-all">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                            Generate Data
+                        </button>
+                        <button type="button" onclick="window.print()" class="flex-1 md:flex-initial flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium px-5 py-2.5 rounded-xl text-sm shadow-sm hover:shadow transition-all">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
+                            Print / Cetak PDF
+                        </button>
+                    </div>
+
+                </div>
+            </form>
+        </div>
+
+        <!-- Live Search, Filter & Sorting Bar Panel -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-4 mb-6 no-print">
+            <div class="flex flex-col md:flex-row gap-3 items-center justify-between">
+                
+                <!-- Search Input Bar -->
+                <div class="relative w-full md:w-1/3">
+                    <span class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                    </span>
+                    <input type="text" id="searchInput" placeholder="Cari No. Bukti atau Uraian..." class="w-full pl-9 pr-4 py-2 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all" oninput="applyFilter()">
+                </div>
+
+                <!-- Sorting Algorithm Selector -->
+                <div class="w-full md:w-auto">
+                    <select id="sortSelect" onchange="applyFilter()" class="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all bg-white text-slate-700">
+                        <option value="none">Urutan Original Excel</option>
+                        <option value="no_asc">No. Bukti (A - Z / Ascending)</option>
+                        <option value="no_desc">No. Bukti (Z - A / Descending)</option>
+                        <option value="nom_desc">Nominal Tertinggi (Max -> Min)</option>
+                        <option value="nom_asc">Nominal Terendah (Min -> Max)</option>
+                    </select>
+                </div>
+
+                <!-- Range Nominal Inputs -->
+                <div class="flex items-center gap-2 w-full md:w-auto">
+                    <input type="number" id="minNominal" placeholder="Min Rp" class="w-24 border border-slate-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all" oninput="applyFilter()">
+                    <span class="text-slate-400 text-xs">-</span>
+                    <input type="number" id="maxNominal" placeholder="Max Rp" class="w-24 border border-slate-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all" oninput="applyFilter()">
+                    
+                    <button type="button" onclick="resetFilter()" class="bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-2 rounded-xl text-xs font-semibold transition-all">
+                        Reset
+                    </button>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- Section Title Before Preview -->
+        <div class="flex items-center justify-between mb-4 no-print">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-500">Preview Lembar Kuitansi Siap Cetak</h3>
+            <span class="text-[11px] text-slate-400">Ukuran Standar Fisik (20.5 x 9.5 cm)</span>
+        </div>
+
+        <!-- Area Tempat Hasil Kuitansi Render -->
+        <div id="kuitansiContainer" class="space-y-6"></div>
+
+    </main>
+
+    <script>
+        // Data Master
+        let masterKuitansiData = [
+            {
+                no_bukti: 'BPU136',
+                tanggal: '29 Mei 2026',
+                terbilang: '',
+                uraian: 'Pembelian kertas sertifikat untuk pencetakan ijazah dan transkrip nilai kelas 6, sebanyak 206 lembar x @ Rp. 1.000',
+                nominal: 206000
+            },
+            {
+                no_bukti: 'BPU137',
+                tanggal: '30 Mei 2026',
+                terbilang: '',
+                uraian: 'Pembelian tinta printer Epson L3110 warna Hitam dan Biru',
+                nominal: 350000
+            }
+        ];
+
+        // Set untuk menyimpan No Bukti yang Duplikat
+        let duplicateNoBuktiSet = new Set();
+
+        // 1. ALGORITMA AUTO TERBILANG
+        function konversiTerbilang(nilai) {
+            const angka = Math.abs(Number(nilai));
+            const huruf = ["", "Satu", "Dua", "Tiga", "Empat", "Lima", "Enam", "Tujuh", "Delapan", "Sembilan", "Sepuluh", "Sebelas"];
+            let temp = "";
+
+            if (angka < 12) {
+                temp = " " + huruf[Math.floor(angka)];
+            } else if (angka < 20) {
+                temp = konversiTerbilang(angka - 10) + " Belas";
+            } else if (angka < 100) {
+                temp = konversiTerbilang(Math.floor(angka / 10)) + " Puluh" + konversiTerbilang(angka % 10);
+            } else if (angka < 200) {
+                temp = " Seratus" + konversiTerbilang(angka - 100);
+            } else if (angka < 1000) {
+                temp = konversiTerbilang(Math.floor(angka / 100)) + " Ratus" + konversiTerbilang(angka % 100);
+            } else if (angka < 2000) {
+                temp = " Seribu" + konversiTerbilang(angka - 1000);
+            } else if (angka < 1000000) {
+                temp = konversiTerbilang(Math.floor(angka / 1000)) + " Ribu" + konversiTerbilang(angka % 1000);
+            } else if (angka < 1000000000) {
+                temp = konversiTerbilang(Math.floor(angka / 1000000)) + " Juta" + konversiTerbilang(angka % 1000000);
+            } else if (angka < 1000000000000) {
+                temp = konversiTerbilang(Math.floor(angka / 1000000000)) + " Milyar" + konversiTerbilang(angka % 1000000000);
+            }
+
+            return temp.trim();
+        }
+
+        function getTerbilang(item) {
+            if (item.terbilang && item.terbilang.trim() !== '' && item.terbilang.trim() !== '-') {
+                return item.terbilang;
+            }
+            if (item.nominal && !isNaN(item.nominal)) {
+                const hasil = konversiTerbilang(item.nominal);
+                return hasil ? `${hasil} Rupiah` : '-';
+            }
+            return '-';
+        }
+
+        // 2. ALGORITMA DETEKSI DUPLIKAT (Deduplication Check)
+        function checkDuplicates(dataList) {
+            duplicateNoBuktiSet.clear();
+            const seenMap = new Map();
+
+            dataList.forEach(item => {
+                const noBukti = (item.no_bukti || '').trim().toUpperCase();
+                if (noBukti && noBukti !== '-') {
+                    if (seenMap.has(noBukti)) {
+                        duplicateNoBuktiSet.add(noBukti);
+                    } else {
+                        seenMap.set(noBukti, true);
+                    }
+                }
+            });
+
+            const alertBadge = document.getElementById('duplicateAlertBadge');
+            if (duplicateNoBuktiSet.size > 0) {
+                alertBadge.innerText = `⚠️ ${duplicateNoBuktiSet.size} No. Bukti Duplikat!`;
+                alertBadge.classList.remove('hidden');
+            } else {
+                alertBadge.classList.add('hidden');
+            }
+        }
+
+        // 3. ALGORITMA SORTING & FILTERING
+        function applyFilter() {
+            const keyword = document.getElementById('searchInput').value.toLowerCase();
+            const minNominal = parseFloat(document.getElementById('minNominal').value) || 0;
+            const maxNominal = parseFloat(document.getElementById('maxNominal').value) || Infinity;
+            const sortOption = document.getElementById('sortSelect').value;
+
+            // Step A: Filtering
+            let filteredData = masterKuitansiData.filter(item => {
+                const noBukti = (item.no_bukti || '').toLowerCase();
+                const uraian = (item.uraian || '').toLowerCase();
+                const nominal = Number(item.nominal || 0);
+
+                const matchesSearch = noBukti.includes(keyword) || uraian.includes(keyword);
+                const matchesNominal = nominal >= minNominal && nominal <= maxNominal;
+
+                return matchesSearch && matchesNominal;
+            });
+
+            // Step B: Sorting Algorithm
+            if (sortOption === 'no_asc') {
+                filteredData.sort((a, b) => (a.no_bukti || '').localeCompare(b.no_bukti || ''));
+            } else if (sortOption === 'no_desc') {
+                filteredData.sort((a, b) => (b.no_bukti || '').localeCompare(a.no_bukti || ''));
+            } else if (sortOption === 'nom_desc') {
+                filteredData.sort((a, b) => Number(b.nominal || 0) - Number(a.nominal || 0));
+            } else if (sortOption === 'nom_asc') {
+                filteredData.sort((a, b) => Number(a.nominal || 0) - Number(b.nominal || 0));
+            }
+
+            renderKuitansi(filteredData, masterKuitansiData.length);
+        }
+
+        function resetFilter() {
+            document.getElementById('searchInput').value = '';
+            document.getElementById('minNominal').value = '';
+            document.getElementById('maxNominal').value = '';
+            document.getElementById('sortSelect').value = 'none';
+            applyFilter();
+        }
+
+        window.onload = () => {
+            checkDuplicates(masterKuitansiData);
+            renderKuitansi(masterKuitansiData);
+        };
+
+        function updateFileName(input) {
+            const display = document.getElementById('fileNameDisplay');
+            if (input.files && input.files[0]) {
+                display.innerText = input.files[0].name;
+            }
+        }
+
+        document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const fileInput = document.getElementById('excelFile');
+            if (!fileInput.files.length) return;
+
+            const formData = new FormData();
+            formData.append('excelFile', fileInput.files[0]);
+
+            const res = await fetch('/upload', { method: 'POST', body: formData });
+            const result = await res.json();
+
+            if (result.success) {
+                if (result.data.length === 0) {
+                    alert('File Excel terdeteksi kosong!');
+                } else {
+                    masterKuitansiData = result.data;
+                    checkDuplicates(masterKuitansiData);
+                    applyFilter();
+                }
+            } else {
+                alert('Gagal memproses file Excel: ' + result.message);
+            }
+        });
+
+        // 4. RENDER KUITANSI & QR CODE GENERATION
+        function renderKuitansi(data, totalMasterCount = data.length) {
+            const container = document.getElementById('kuitansiContainer');
+            container.innerHTML = '';
+
+            document.getElementById('dataCountBadge').innerText = `Menampilkan ${data.length} dari ${totalMasterCount} Kuitansi`;
+
+            if (data.length === 0) {
+                container.innerHTML = `
+                    <div class="bg-white p-12 rounded-2xl text-center border border-dashed border-slate-300 no-print">
+                        <svg class="w-12 h-12 text-slate-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        <p class="text-slate-600 font-semibold text-sm">Tidak ada kuitansi yang cocok dengan filter.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const instansi = document.getElementById('instansiName').value;
+            const kepsek = document.getElementById('kepsekName').value;
+            const kepsekNip = document.getElementById('kepsekNip').value;
+            const kotaTgl = document.getElementById('kotaTanggal').value;
+            const bendahara = document.getElementById('bendaharaName').value;
+            const bendaharaNip = document.getElementById('bendaharaNip').value;
+
+            data.forEach((item, index) => {
+                const teksTerbilang = getTerbilang(item);
+                const noBuktiClean = (item.no_bukti || '-').trim();
+                const isDuplicate = duplicateNoBuktiSet.has(noBuktiClean.toUpperCase());
+
+                const qrContainerId = `qrcode-${index}`;
+
+                const html = `
+                    <div class="kuitansi-box kuitansi-page shadow-md rounded-sm">
+                        
+                        ${isDuplicate ? `<div class="absolute top-2 right-4 bg-rose-600 text-white text-[9px] font-bold px-2 py-0.5 rounded no-print tracking-wider">DUPLIKAT DETECTED</div>` : ''}
+
+                        <!-- Header Kuitansi -->
+                        <div class="text-center mb-3">
+                            <h1 class="text-xl font-bold uppercase tracking-widest border-b-2 border-black inline-block pb-0.5">
+                                KUITANSI
+                            </h1>
+                        </div>
+
+                        <!-- Data Isian Utama -->
+                        <div class="space-y-1.5 text-xs mb-3 leading-snug">
+                            <div class="flex items-end">
+                                <span class="w-36 font-semibold">Nomor</span>
+                                <span class="mr-2">:</span>
+                                <span class="flex-1 font-bold border-dotted-line pl-1 ${isDuplicate ? 'text-rose-600' : ''}">${noBuktiClean}</span>
+                            </div>
+                            <div class="flex items-end">
+                                <span class="w-36 font-semibold">Sudah diterima dari</span>
+                                <span class="mr-2">:</span>
+                                <span class="flex-1 border-dotted-line pl-1">Bendahara ${instansi}</span>
+                            </div>
+                            <div class="flex items-end">
+                                <span class="w-36 font-semibold">Banyaknya uang</span>
+                                <span class="mr-2">:</span>
+                                <span class="flex-1 italic capitalize font-bold border-dotted-line pl-1">${teksTerbilang}</span>
+                            </div>
+                            <div class="flex items-end">
+                                <span class="w-36 font-semibold">Untuk pembayaran</span>
+                                <span class="mr-2">:</span>
+                                <span class="flex-1 border-dotted-line pl-1 text-[11px]">${item.uraian || '-'}</span>
+                            </div>
+                        </div>
+
+                        <!-- Nominal Angka & QR Code Verifikasi (Posisi Sejajar) -->
+                        <div class="my-3 ml-6 flex items-center justify-between pr-8">
+                            <div class="skew-box">
+                                <div class="skew-box-content">
+                                    Rp. ${Number(item.nominal || 0).toLocaleString('id-ID')},00
+                                </div>
+                            </div>
+
+                            <!-- Barcode / QR Code Container -->
+                            <div class="flex items-center gap-2">
+                                <div id="${qrContainerId}" class="qrcode-container border border-slate-300 p-1 bg-white rounded"></div>
+                                <div class="text-[8px] text-slate-500 leading-tight">
+                                    <p class="font-bold">VERIFIED OFFICIAL</p>
+                                    <p>Scan to validate document</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Area Tanda Tangan 3 Kolom -->
+                        <div class="grid grid-cols-3 text-center text-[10px] gap-2 mt-4 pt-1">
+                            
+                            <!-- Kolom 1: Kepala Sekolah -->
+                            <div class="flex flex-col justify-between h-20">
+                                <div>
+                                    <p class="font-normal">Setuju dibayar</p>
+                                    <p class="font-normal">Kepala ${instansi}</p>
+                                </div>
+                                <div>
+                                    <p class="font-bold underline leading-none">${kepsek}</p>
+                                    <p class="text-[9px] mt-0.5">NIP. ${kepsekNip}</p>
+                                </div>
+                            </div>
+
+                            <!-- Kolom 2: Bendahara -->
+                            <div class="flex flex-col justify-between h-20">
+                                <div>
+                                    <p class="font-normal">Lunas dibayar, ${item.tanggal && item.tanggal !== '-' ? item.tanggal : kotaTgl.split(',')[1] || ''}</p>
+                                    <p class="font-normal">Bendahara</p>
+                                </div>
+                                <div>
+                                    <p class="font-bold underline leading-none">${bendahara}</p>
+                                    <p class="text-[9px] mt-0.5">NIP. ${bendaharaNip}</p>
+                                </div>
+                            </div>
+
+                            <!-- Kolom 3: Yang Menerima -->
+                            <div class="flex flex-col justify-between h-20">
+                                <div>
+                                    <p class="font-normal">${kotaTgl}</p>
+                                    <p class="font-normal">Yang Menerima</p>
+                                </div>
+                                <div>
+                                    <p class="font-bold underline leading-none">( .................................... )</p>
+                                    <p class="text-[9px] mt-0.5">&nbsp;</p>
+                                </div>
+                            </div>
+
+                        </div>
+
+                    </div>
+                `;
+                container.innerHTML += html;
+            });
+
+data.forEach((item, index) => {
+    const noBuktiClean = (item.no_bukti || '-').trim();
+    const noBuktiEncoded = encodeURIComponent(noBuktiClean);
+    const qrPayload = `${window.location.origin}/kuitansi/pdf/${noBuktiEncoded}`;
+
+    const qrContainerId = `qrcode-${index}`;
+    const qrElement = document.getElementById(qrContainerId);
+
+    if (qrElement) {
+        // Hapus semua elemen anak di dalam container
+        while (qrElement.firstChild) {
+            qrElement.removeChild(qrElement.firstChild);
+        }
+
+        // Render QR Code baru
+        new QRCode(qrElement, {
+            text: qrPayload,
+            width: 52,
+            height: 52,
+            colorDark: "#005681",
+            colorLight: "#ffffff",
+            correctLevel: QRCode.CorrectLevel.M
+        });
+
+        // Hapus canvas secara langsung via JS jika masih ngeyel me-render double
+        setTimeout(() => {
+            const canvas = qrElement.querySelector('canvas');
+            if (canvas && qrElement.querySelector('img')) {
+                canvas.remove();
+            }
+        }, 50);
+    }
+});
+        }
+    </script>
+</body>
+</html>
