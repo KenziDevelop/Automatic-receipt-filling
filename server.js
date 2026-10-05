@@ -2,12 +2,15 @@ const express = require('express');
 const multer = require('multer');
 const xlsx = require('xlsx');
 const path = require('path');
-const fs = require('fs');
 
 const app = express();
-const upload = multer({ dest: 'uploads/' });
 
-app.use(express.static('public'));
+// Gunakan Memory Storage agar kompatibel dengan Vercel Serverless Function
+const storage = multer.memoryStorage();
+const upload = multer({ storage: storage });
+
+// Gunakan path.join agar Vercel bisa menemukan folder static 'public'
+app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 
 // Helper Fungsi Terbilang Otomatis
@@ -37,10 +40,15 @@ function terbilang(nilai) {
     return temp.trim();
 }
 
-// Endpoint Upload Excel
+// Endpoint Upload Excel (Membaca file langsung dari memory buffer)
 app.post('/upload', upload.single('excelFile'), (req, res) => {
     try {
-        const workbook = xlsx.readFile(req.file.path);
+        if (!req.file) {
+            return res.status(400).json({ success: false, message: 'Tidak ada file yang diupload' });
+        }
+
+        // Membaca file dari buffer ram (bukan dari disk folder uploads)
+        const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
         const sheetName = workbook.SheetNames[0];
         const rawData = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]);
 
@@ -70,23 +78,16 @@ app.post('/upload', upload.single('excelFile'), (req, res) => {
             };
         });
 
-        // Hapus file sementara setelah selesai diproses
-        fs.unlinkSync(req.file.path);
-
         res.json({ success: true, data: dataParsed });
     } catch (error) {
-        if (req.file && fs.existsSync(req.file.path)) {
-            fs.unlinkSync(req.file.path);
-        }
         res.status(500).json({ success: false, message: error.message });
     }
 });
 
-// NEW: Endpoint Verifikasi Scan QR Code
+// Endpoint Verifikasi Scan QR Code
 app.get('/kuitansi/pdf/:no_bukti', (req, res) => {
     const noBukti = req.params.no_bukti;
     
-    // Menampilkan Tampilan Verifikasi Dokumen Saat QR Code Di-scan
     res.send(`
         <!DOCTYPE html>
         <html lang="id">
@@ -130,8 +131,12 @@ app.get('/kuitansi/pdf/:no_bukti', (req, res) => {
     `);
 });
 
-// KODE BARU (Siap Deploy ke Render)
+// Expose app untuk Vercel
+module.exports = app;
+
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-    console.log(`Server berjalan di port ${PORT}`);
-});
+if (process.env.NODE_ENV !== 'production') {
+    app.listen(PORT, () => {
+        console.log(`Server berjalan di port ${PORT}`);
+    });
+}
